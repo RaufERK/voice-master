@@ -1,0 +1,33 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Local inputs and generated audio — never commit
+audio-source/
+work/
+output/
+
+# Video
+*.mp4
+*.mkv
+*.webm
+*.mov
+*.avi
+
+# Audio in or out
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.aac
+*.ogg
+*.opus
+
+# Captions / subtitles
+*.sbv
+*.srt
+*.vtt
+*.ass
+*.ssa

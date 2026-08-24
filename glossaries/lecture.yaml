@@ -1,0 +1,35 @@
+series: Mercy's Flame lecture
+context: |
+  Spoken dictation / lecture in the Summit Lighthouse current (Keepers of the Flame).
+  Elevated liturgical English into natural spoken Russian of the same register.
+  Keep theosophical names in their usual Russian forms; do not invent new spellings.
+
+names:
+  Sanat Kumara: Саната Кумара
+  Gautama Buddha: Гаутама Будда
+  Kuan Yin: Куань Инь
+  Quan Yin: Куань Инь
+  Kwan Yin: Куань Инь
+  Nada: Нада
+  El Morya: Эль Мория
+  I AM THAT I AM: Я ЕСМЬ ТО ЧТО Я ЕСМЬ
+  I AM Presence: Я ЕСМЬ Присутствие
+  Mighty I AM Presence: Могущественное Я ЕСМЬ Присутствие
+
+terms:
+  Great Central Sun: Великое Центральное Солнце
+  sacred fire: священный огонь
+  mercy flame: пламя милосердия
+  Great White Brotherhood: Великое Белое Братство
+  ascended master: вознесённый владыка
+  cosmic Christ: космический Христос
+  manchild: младенец-муж
+  Karmic Board: Кармическое Правление
+  Pearl of Wisdom: Жемчужина Мудрости
+  Chohan: Чохан
+  Chohans: Чоханы
+  seventh ray: седьмой луч
+
+notes:
+  - Fix ASR errors silently (e.g. Guan → Kuan Yin, shine → shrine when that is the meaning).
+  - Hymn lines may be broken; still translate them as sung verse, not as jokes.

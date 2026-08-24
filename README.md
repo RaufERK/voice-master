@@ -5,6 +5,8 @@
 
 Конечная цель — диктор говорит этот текст по-русски **своим тембром**. Сначала простой перевод + TTS.
 
+В git — только код. Исходные видео/аудио, субтитры и результаты озвучки в репозиторий не входят.
+
 ## Стек
 
 Python 3.12, OpenAI SDK, системный `ffmpeg`.  
@@ -27,6 +29,13 @@ python3.12 -m venv .venv
 cp .env.example .env   # OPENAI_API_KEY = токен прокси, не sk-proj
 ```
 
+Исходники кладём локально, например:
+
+```
+audio-source/LECTURE_1/captions.sbv
+audio-source/LECTURE_1/*.mp4
+```
+
 ```bash
 .venv/bin/python make_ru_voice.py --check
 
@@ -43,5 +52,4 @@ TRANSLATION_MODEL=gpt-5.6-luna
 TTS_MODEL=tts-1-hd
 ```
 
-Исходники: `captions.sbv`, видео в `audio-source/` (не в git). Артефакты — `work/`, `output/`.
-# voice-master
+Артефакты пайплайна — `work/` и `output/` (тоже не в git).
