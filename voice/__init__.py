@@ -9,12 +9,18 @@ DEFAULT_BASE_URL = "https://spoken-word.info/openai-proxy/v1"
 DEFAULT_MODEL = "gpt-5.6-luna"
 DEFAULT_TTS_MODEL = "tts-1-hd"
 DEFAULT_TTS_VOICE = "nova"
+DEFAULT_ASR_MODEL = "whisper-1"
 DEFAULT_TTS_FALLBACK_MODEL = "tts-1-hd"
 DEFAULT_BATCH_SIZE = 12
+DEFAULT_CLASSIFY_BATCH_SIZE = 40
 DEFAULT_CONTEXT_SEGMENTS = 4
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_DURATION_SECONDS = 300.0
 DEFAULT_GAP_MERGE_SECONDS = 1.2
+DEFAULT_MAX_SPEECH_CHARS = 1800
+DEFAULT_MAX_SPEECH_SECONDS = 180.0
+DEFAULT_DUCK_DB = -18.0
+DEFAULT_SAMPLE_RATE = 48000
 DEFAULT_GLOSSARY = PROJECT_ROOT / "glossaries" / "lecture.yaml"
 DEFAULT_CAPTIONS = PROJECT_ROOT / "audio-source" / "LECTURE_1" / "captions.sbv"
 
@@ -34,6 +40,7 @@ class Segment:
     end: float
     text: str
     cue_ids: tuple[int, ...]
+    kind: str = "speech"
 
 
 @dataclass(frozen=True)
@@ -54,8 +61,11 @@ class AppConfig:
     tts_voice: str
     glossary_path: Path | None
     captions_path: Path
+    source_path: Path | None
     start_seconds: float
     duration_seconds: float
     batch_size: int
     force: bool
     translate_only: bool
+    en_bed: bool
+    duck_db: float

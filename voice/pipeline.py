@@ -12,9 +12,12 @@ from . import (
     PROJECT_ROOT,
     Segment,
 )
+from .audio import extract_window_wav, find_source_media
 from .checkpoint import batch_path, load_done_translations, load_json, save_json, tts_path
+from .classify import classify_cues
+from .mix import mix_en_bed
 from .sbv import load_sbv
-from .segments import filter_window, merge_cues
+from .segments import filter_window, merge_cues, merge_labeled_cues
 from .translate import OpenAITranslator, TranslationError
 from .tts import concatenate_mp3, synthesize_segment
 
@@ -25,10 +28,11 @@ def work_dir_for(start: float, duration: float) -> Path:
     return PROJECT_ROOT / "work" / f"window_{start_tag}_{end_tag}"
 
 
-def output_path_for(start: float, duration: float) -> Path:
+def output_path_for(start: float, duration: float, *, en_bed: bool) -> Path:
     start_tag = int(start)
     end_tag = int(start + duration)
-    return PROJECT_ROOT / "output" / f"lecture_ru_{start_tag}_{end_tag}s.mp3"
+    suffix = "bed" if en_bed else "ru"
+    return PROJECT_ROOT / "output" / f"lecture_{suffix}_{start_tag}_{end_tag}s.mp3"
 
 
 def run_pipeline(config: AppConfig, glossary: Glossary | None) -> str:
@@ -36,13 +40,34 @@ def run_pipeline(config: AppConfig, glossary: Glossary | None) -> str:
     work_dir = work_dir_for(config.start_seconds, config.duration_seconds)
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    print("[1/5] Parsing captions...")
+    print("[1/6] Parsing captions...")
     cues = load_sbv(config.captions_path)
     window = filter_window(cues, config.start_seconds, end)
-    segments = merge_cues(window, gap_seconds=DEFAULT_GAP_MERGE_SECONDS)
-    if not segments:
+    if not window:
         raise RuntimeError("No caption segments in this time window")
-    print(f"         {len(window)} cues → {len(segments)} segments")
+
+    translator = OpenAITranslator(
+        api_key=config.openai_api_key,
+        base_url=config.openai_base_url,
+        model=config.model,
+    )
+
+    if config.en_bed:
+        print("[2/6] Classifying speech vs song...")
+        kinds = classify_cues(translator, window, work_dir=work_dir, force=config.force)
+        segments = merge_labeled_cues(
+            window, kinds, speech_gap_seconds=DEFAULT_GAP_MERGE_SECONDS
+        )
+    else:
+        print("[2/6] Merging cues...")
+        segments = merge_cues(window, gap_seconds=DEFAULT_GAP_MERGE_SECONDS)
+
+    speech_segments = [segment for segment in segments if segment.kind == "speech"]
+    song_segments = [segment for segment in segments if segment.kind == "song"]
+    print(
+        f"         {len(window)} cues → {len(segments)} segments "
+        f"({len(speech_segments)} speech, {len(song_segments)} song)"
+    )
     save_json(
         work_dir / "meta.json",
         {
@@ -51,19 +76,17 @@ def run_pipeline(config: AppConfig, glossary: Glossary | None) -> str:
             "end": end,
             "model": config.model,
             "tts_model": config.tts_model,
+            "en_bed": config.en_bed,
             "segment_count": len(segments),
+            "speech_count": len(speech_segments),
+            "song_count": len(song_segments),
         },
     )
 
-    translator = OpenAITranslator(
-        api_key=config.openai_api_key,
-        base_url=config.openai_base_url,
-        model=config.model,
-    )
-
-    print("[2/5] Translating...")
-    translations = translate_segments(work_dir, segments, config, glossary, translator)
-
+    print("[3/6] Translating speech...")
+    translations: dict[int, str] = {}
+    if speech_segments:
+        translations = translate_segments(work_dir, speech_segments, config, glossary, translator)
     ru_text_path = work_dir / "ru_segments.json"
     save_json(
         ru_text_path,
@@ -71,10 +94,11 @@ def run_pipeline(config: AppConfig, glossary: Glossary | None) -> str:
             "segments": [
                 {
                     "id": segment.segment_id,
+                    "kind": segment.kind,
                     "start": segment.start,
                     "end": segment.end,
                     "en": segment.text,
-                    "ru": translations[segment.segment_id],
+                    "ru": translations.get(segment.segment_id, ""),
                 }
                 for segment in segments
             ]
@@ -83,18 +107,44 @@ def run_pipeline(config: AppConfig, glossary: Glossary | None) -> str:
     print(f"         wrote {ru_text_path.relative_to(PROJECT_ROOT)}")
 
     if config.translate_only:
-        print("[3/5] Translate-only: skipping TTS")
-        return f"translated: {len(segments)} segments"
+        print("[4/6] Translate-only: skipping TTS")
+        return f"translated: {len(speech_segments)} speech segments"
 
-    print("[3/5] Synthesizing speech...")
-    audio_paths = synthesize_segments(translator.client, work_dir, segments, translations, config)
+    print("[4/6] Synthesizing speech...")
+    if speech_segments:
+        synthesize_segments(translator.client, work_dir, speech_segments, translations, config)
+    else:
+        print("         no speech to synthesize")
 
-    print("[4/5] Concatenating...")
-    output_path = output_path_for(config.start_seconds, config.duration_seconds)
-    concatenate_mp3(audio_paths, output_path)
+    output_path = output_path_for(config.start_seconds, config.duration_seconds, en_bed=config.en_bed)
+    if config.en_bed:
+        print("[5/6] Mixing Russian over quiet English (pause when RU is longer)...")
+        source = config.source_path or find_source_media(config.captions_path)
+        print(f"         source {source.name}")
+        source_wav = work_dir / "source_window.wav"
+        if config.force or not source_wav.exists():
+            extract_window_wav(
+                source,
+                source_wav,
+                start=config.start_seconds,
+                duration=config.duration_seconds,
+            )
+        mix_en_bed(
+            source_wav=source_wav,
+            segments=segments,
+            window_start=config.start_seconds,
+            window_end=end,
+            work_dir=work_dir,
+            output_mp3=output_path,
+            duck_db=config.duck_db,
+        )
+    else:
+        print("[5/6] Concatenating Russian speech...")
+        audio_paths = [tts_path(work_dir, segment.segment_id) for segment in speech_segments]
+        concatenate_mp3(audio_paths, output_path)
     print(f"         wrote {output_path.relative_to(PROJECT_ROOT)}")
 
-    print("[5/5] Done")
+    print("[6/6] Done")
     return f"ok: {output_path.name}"
 
 
