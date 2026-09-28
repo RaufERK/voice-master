@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,11 @@ from .checkpoint import load_json, save_json
 
 
 AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus", ".aac"}
+
+# Whisper hears this Summit fiat as "bind the willfulness".
+_ASR_PHRASE_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"bind the willfulness", re.IGNORECASE), "bolts of blue lightning"),
+)
 
 
 class TranscribeError(RuntimeError):
@@ -74,7 +80,7 @@ def _transcribe_file(
     existing = load_json(cache_path)
     if existing and existing.get("ok") and not force:
         print("         cached")
-        return existing
+        return _fix_cached_record(cache_path, existing)
 
     duration = probe_duration(path)
     with path.open("rb") as handle:
@@ -88,7 +94,7 @@ def _transcribe_file(
         except Exception as exc:
             raise TranscribeError(f"ASR failed for {path.name}: {exc}") from exc
 
-    text = str(getattr(result, "text", "") or "").strip()
+    text = apply_asr_fixes(str(getattr(result, "text", "") or "").strip())
     segments = _segments_from_result(result)
     if not text and segments:
         text = " ".join(item["text"] for item in segments).strip()
@@ -107,11 +113,37 @@ def _transcribe_file(
     return record
 
 
+def apply_asr_fixes(text: str) -> str:
+    for pattern, right in _ASR_PHRASE_FIXES:
+        text = pattern.sub(lambda match, replacement=right: _match_case(match.group(0), replacement), text)
+    return text
+
+
+def _match_case(found: str, replacement: str) -> str:
+    if found[:1].isupper():
+        return replacement[:1].upper() + replacement[1:]
+    return replacement
+
+
+def _fix_cached_record(cache_path: Path, record: dict[str, Any]) -> dict[str, Any]:
+    text = apply_asr_fixes(str(record.get("text") or ""))
+    segments = []
+    for item in record.get("segments") or []:
+        segment = dict(item)
+        segment["text"] = apply_asr_fixes(str(segment.get("text") or ""))
+        segments.append(segment)
+    if text == record.get("text") and segments == (record.get("segments") or []):
+        return record
+    fixed = {**record, "text": text, "segments": segments}
+    save_json(cache_path, fixed)
+    return fixed
+
+
 def _segments_from_result(result: object) -> list[dict[str, Any]]:
     raw = getattr(result, "segments", None) or []
     segments: list[dict[str, Any]] = []
     for item in raw:
-        text = str(getattr(item, "text", "") or "").strip()
+        text = apply_asr_fixes(str(getattr(item, "text", "") or "").strip())
         if not text:
             continue
         segments.append(
